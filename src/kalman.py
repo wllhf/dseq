@@ -5,8 +5,8 @@ tfpd = tfp.distributions
 class Kalman(tf.keras.layers.Layer):
 
     def __init__(
-            self, 
-            dim_state=None, dim_obs=None, 
+            self,
+            dim_state=None, dim_obs=None,
             kernel_initializer='glorot_uniform',
             bias_initializer='zeros',
             **kwargs
@@ -38,16 +38,16 @@ class Kalman(tf.keras.layers.Layer):
 
     def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
         """ This refers to the RNN cell state which combines mean and variance. """
-        batch_size = inputs[0] if batch_size is None else batch_size
+        batch_size = inputs.shape[0] if batch_size is None else batch_size
         dtype = inputs.dtype if dtype is None else dtype
         return (
-            tf.zeros(shape=[batch_size, self._dim_state, 1], dtype=dtype), 
+            tf.zeros(shape=[batch_size, self._dim_state, 1], dtype=dtype),
             tf.eye(self._dim_state, batch_shape=(batch_size,), dtype=dtype)
             )
 
     def _step(self, obs, mean, cov):
         """
-        This method contains the actual Kalman filter update. 
+        This method contains the actual Kalman filter update.
 
         args:
           obs: Tensor [batch_size, dim_obs, 1]
@@ -68,8 +68,8 @@ class Kalman(tf.keras.layers.Layer):
 
     def call(self, obs, state, training=None):
         """
-        This method is implemented according to the RNN cell interface 
-        to be used with the Keras RNN layer. 
+        This method is implemented according to the RNN cell interface
+        to be used with the Keras RNN layer.
 
         args:
           obs: observation at t tensor [dim_obs]
