@@ -37,13 +37,13 @@ class DeepKalmanFilter(tf.keras.Model):
             cov = tf.keras.layers.Dense(dim_out, activation='softplus', name='dense_cov')(h)
             return tf.keras.Model(inputs=input, outputs=[mean, cov], name=name)
 
-        """ p(z_t|z_t-1) """
+        # p(z_t|z_t-1)
         self._f = _get_gaussian_model(f_stub, (None, self._dim_state,), dim_state, 'dynamics')
 
-        """ p(x_t|z_t) """
+        # p(x_t|z_t)
         self._g = _get_gaussian_model(g_stub, (None, self._dim_state,), dim_obs, 'generator')
 
-        """ p(z|x) """
+        # p(z|x)
         if r_rnn is None:
             r_rnn = tf.keras.layers.RNN(
                     [
@@ -60,20 +60,20 @@ class DeepKalmanFilter(tf.keras.Model):
         args:
           obs: Tensor [batch_size, seq_len, dim_obs]
         """
-        # compute posterior p(state|obs)
+        # compute posterior p(z|x)
         q_mean, q_cov = self._r(obs)
         q = self._dist_state_cls(q_mean, q_cov)
 
         z = self._convert_to_tensor_fn(q)
 
-        # compute prior p(state_t|state_t-1)
+        # compute prior p(z_t|z_t-1)
         p0_mean, p0_cov = self._f(z[:, :-1, :])
         p0 = self._dist_state_cls(p0_mean, p0_cov)
 
-        # compute prior p(state_1)
+        # compute prior p(z_1)
         p_init = self._dist_state_cls(tf.zeros(self._dim_state), tf.eye(self._dim_state))
 
-        # compute likelihood p(obs|state)
+        # compute likelihood p(x_t|z_t)
         p_mean, p_cov = self._g(z)
         p = self._dist_obs_cls(p_mean, p_cov)
 
