@@ -3,7 +3,7 @@ import tensorflow_probability as tfp
 tfpd = tfp.distributions
 
 
-class Kalman(tf.keras.layers.Layer):
+class KalmanCell(tf.keras.layers.Layer):
 
     def __init__(
             self,
@@ -12,7 +12,7 @@ class Kalman(tf.keras.layers.Layer):
             name='kalman_cell', **kwargs
             ):
 
-        super(Kalman, self).__init__(name=name, **kwargs)
+        super(KalmanCell, self).__init__(name=name, **kwargs)
         self._dim_state = dim_state
         self._dim_obs = dim_obs
         self._kernel_initializer = kernel_initializer
@@ -83,17 +83,65 @@ class Kalman(tf.keras.layers.Layer):
         new_state = self._step(tf.expand_dims(obs, axis=-1), state[0], state[1])
         return (new_state[0][..., 0], new_state[1]), new_state
 
-    def likelihood(self, observations, states):
-        return tfpd.MultivariateNormalTriL(
-            tf.matmul(states, self.C, transpose_b=True), tf.math.softplus(self.R)
-            ).prob(observations)
-
     def get_config(self):
         config = super().get_config()
         config.update({
             'dim_state': self._dim_state,
             'dim_obs': self._dim_obs,
             'kernel_initializer': self._kernel_initializer
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+class KalmanFilter(tf.keras.Model):
+
+    def __init__(self,
+                dim_state=None, dim_obs=None,
+                name='kalman_filter', **kwargs
+            ):
+        super(KalmanFilter, self).__init__(name=name, **kwargs)
+        self._dim_state = dim_state
+        self._dim_obs = dim_obs
+        self._cell = KalmanCell(dim_state=dim_state, dim_obs=dim_obs, **kwargs)
+        self._rnn = tf.keras.layers.RNN(
+            self._cell, return_sequences=True, return_state=False,
+        )
+        self._loss_tracker = tf.keras.metrics.Mean(name="loss")
+
+    def call(self, observations):
+        return self._rnn(observations)
+
+    def log_likelihood(self, observations):
+        states, _ = self(observations)
+        return tfpd.MultivariateNormalTriL(
+            tf.matmul(states, self._cell.C, transpose_b=True), tf.math.softplus(self._cell.R)
+            ).log_prob(observations)
+
+    def train_step(self, data):
+
+        with tf.GradientTape() as tape:
+            loss = tf.reduce_mean(tf.reduce_sum(
+                self.log_likelihood(data),
+                  axis=1))
+
+        gradients = tape.gradient(loss, self.trainable_variables)
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+
+        self._loss_tracker.update_state(loss)
+        return {"loss": self._loss_tracker.result()}
+
+    @property
+    def metrics(self):
+        return [self._loss_tracker]
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'dim_state': self._dim_state,
+            'dim_obs': self._dim_obs
         })
         return config
 
