@@ -1,6 +1,11 @@
 import numpy as np
 
 
+def _prod(M, v):
+    """ Multiply matrix with batched vector. """
+    return np.einsum('ij,ki->ki', M, v)
+
+
 def lin_gaussian_ssm(A, C, Q, R, seq_len, num_samples, seed=0, dtype=np.float32):
     """
     Linear Gaussian State Space Model.
@@ -35,15 +40,12 @@ def lin_gaussian_ssm(A, C, Q, R, seq_len, num_samples, seed=0, dtype=np.float32)
     loc_sta = np.zeros(dim_state)
     loc_obs = np.zeros(dim_obs)
 
-    def prod(M, v):
-        return np.einsum('ij,ki->ki', M, v)
-
     sta[:, 0, :] = loc_sta
-    obs[:, 0, :] = prod(C, sta[:, 0, :]) + random_state.normal(loc_obs, scale=R, size=(num_samples, dim_obs))
+    obs[:, 0, :] = _prod(C, sta[:, 0, :]) + random_state.normal(loc_obs, scale=R, size=(num_samples, dim_obs))
 
     for t in range(1, seq_len):
-        sta[:, t, :] = prod(A, sta[:, t-1, :]) + random_state.normal(loc=loc_sta, scale=Q, size=(num_samples, dim_state))
-        obs[:, t, :] = prod(C, sta[:, t, :]) + random_state.normal(loc=loc_obs, scale=R, size=(num_samples, dim_obs))
+        sta[:, t, :] = _prod(A, sta[:, t-1, :]) + random_state.normal(loc=loc_sta, scale=Q, size=(num_samples, dim_state))
+        obs[:, t, :] = _prod(C, sta[:, t, :]) + random_state.normal(loc=loc_obs, scale=R, size=(num_samples, dim_obs))
 
     # constant covariance
     cov = np.broadcast_to(Q, (num_samples, seq_len, dim_state, dim_state))

@@ -1,4 +1,7 @@
 import tensorflow as tf
+import tensorflow_probability as tfp
+tfpd = tfp.distributions
+
 
 class Kalman(tf.keras.layers.Layer):
 
@@ -20,7 +23,7 @@ class Kalman(tf.keras.layers.Layer):
         self.A = tf.Variable(kinit()((self._dim_state, self._dim_state)), trainable=True)
         self.C = tf.Variable(kinit()((self._dim_obs, self._dim_state)), trainable=True)
         self.Q = tf.Variable(kinit()((self._dim_state, self._dim_state)), trainable=True)
-        self.R = tf.Variable(kinit()((self._dim_state, self._dim_state)), trainable=True)
+        self.R = tf.Variable(kinit()((self._dim_obs, self._dim_obs)), trainable=True)
         self.I = tf.eye(self._dim_state)
 
     @property
@@ -79,6 +82,11 @@ class Kalman(tf.keras.layers.Layer):
         obs = tf.cast(obs, dtype=tf.float32)
         new_state = self._step(tf.expand_dims(obs, axis=-1), state[0], state[1])
         return (new_state[0][..., 0], new_state[1]), new_state
+
+    def likelihood(self, observations, states):
+        return tfpd.MultivariateNormalTriL(
+            tf.matmul(states, self.C, transpose_b=True), tf.math.softplus(self.R)
+            ).prob(observations)
 
     def get_config(self):
         config = super().get_config()
