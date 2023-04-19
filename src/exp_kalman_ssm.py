@@ -5,8 +5,8 @@ import tensorflow_datasets as tfds
 import tensorflow_probability as tfp
 import matplotlib.pyplot as plt
 
-from ssm import lin_gaussian_ssm
-from kalman import Kalman
+from data.ssm import ssm_loader
+from models.kalman import Kalman
 
 tfpd = tfp.distributions
 
@@ -21,20 +21,25 @@ params = {
     'NUM_SAMPLES': 4096,
     'BATCH_SIZE': 512,
     'LEARNING_RATE': 0.0005,
-    'NUM_EPOCHS': 2,
+    'NUM_EPOCHS': 100,
     'MODEL_PATH': '~/proj/dpf_final/'
 }
 
 # data
-data_trn_target_ssm_state, data_trn_target_ssm_cov, data_trn_obs  = lin_gaussian_ssm(
+data_trn_target_ssm_state, data_trn_target_ssm_cov, data_trn_obs  = ssm_loader(
     num_samples=params['NUM_SAMPLES'], seq_len=params['SEQ_LEN'],
     A=params['SSM_A'], C=params['SSM_C'], Q=params['SSM_Q'], R=params['SSM_R'],
     seed=0)
 
-data_val_target_ssm_state, data_val_target_ssm_cov, data_val_obs = lin_gaussian_ssm(
+data_val_target_ssm_state, data_val_target_ssm_cov, data_val_obs = ssm_loader(
    num_samples=32, seq_len=params['SEQ_LEN'],
    A=params['SSM_A'], C=params['SSM_C'], Q=params['SSM_Q'], R=params['SSM_R'],
    seed=1234)
+
+data_tst_target_ssm_state, data_tst_target_ssm_cov, data_tst_obs = ssm_loader(
+   num_samples=100, seq_len=params['SEQ_LEN'],
+   A=params['SSM_A'], C=params['SSM_C'], Q=params['SSM_Q'], R=params['SSM_R'],
+   seed=9000)
 
 # model
 observations = tf.keras.Input(shape=(params['SEQ_LEN'], params['DIM_OBS']), name='observations')
@@ -45,13 +50,6 @@ estimates = tf.keras.layers.RNN(
 model = tf.keras.Model(inputs=observations, outputs=estimates)
 model.compile()
 model.summary()
-
-def kl_loss(target, estimate):
-    return tf.reduce_mean(
-        tf.reduce_sum(tfpd.kl_divergence(
-        tfpd.MultivariateNormalTriL(*estimate),
-        tfpd.MultivariateNormalTriL(*target),
-    ), axis=1))
 
 optimizer = tf.keras.optimizers.SGD(learning_rate=params['LEARNING_RATE'])
 
@@ -64,7 +62,9 @@ for epoch in range(params['NUM_EPOCHS']):
 
         with tf.GradientTape() as tape:
             estimates = model(batch)
-            loss = kl_loss(target, estimates)
+            loss = tf.reduce_mean(tf.reduce_sum(
+                kalman_cell.likelihood(batch, estimates[0]),
+                  axis=1))
 
         gradients = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
@@ -75,11 +75,6 @@ for epoch in range(params['NUM_EPOCHS']):
 # tf.keras.saving.save_model(model, params['MODEL_PATH'])
 
 # evaluate
-data_tst_target_ssm_state, data_tst_target_ssm_cov, data_tst_obs = lin_gaussian_ssm(
-   num_samples=100, seq_len=params['SEQ_LEN'],
-   A=params['SSM_A'], C=params['SSM_C'], Q=params['SSM_Q'], R=params['SSM_R'],
-   seed=9000)
-
 est_ssm_state, est_ssm_cov = model(data_tst_obs)
 
 # likelihood
@@ -87,8 +82,7 @@ obs_loc = np.einsum('ij,ki->ki', np.array(params['SSM_C']), data_tst_target_ssm_
 likelihood = tfpd.MultivariateNormalTriL(obs_loc, np.array(params['SSM_R'])).prob(data_tst_obs)
 print(np.mean(likelihood))
 
-obs_loc = np.einsum('ij,ki->ki', kalman_cell.C, est_ssm_state[..., 0])[..., None]
-likelihood = tfpd.MultivariateNormalTriL(obs_loc, kalman_cell.R).prob(data_tst_obs)
+likelihood = kalman_cell.likelihood(data_tst_obs, est_ssm_state)
 print(np.mean(likelihood))
 
 # plot
