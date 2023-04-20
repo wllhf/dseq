@@ -8,12 +8,12 @@ import matplotlib.pyplot as plt
 from models.kalman import KalmanFilter
 
 from utils import ssm_params as params
-from utils import ssm_loader, ssm_plot
+from utils import ssm_loader, ssm_plot, ssm_log_likelihood
 
 tfpd = tfp.distributions
 
 params['LEARNING_RATE'] = 0.0005
-params['NUM_EPOCHS'] = 50
+params['NUM_EPOCHS'] = 20
 
 # data
 data_trn_target_ssm_state, data_trn_target_ssm_cov, data_trn_obs  = ssm_loader(params, mode='trn')
@@ -40,31 +40,18 @@ model.fit(
 est_ssm_state, est_ssm_cov = model(data_tst_obs)
 
 # likelihood
-obs_loc = np.einsum('ij,ki->ki', np.array(params['SSM_C']), data_tst_target_ssm_state[..., 0])[..., None]
-log_llh = tfpd.MultivariateNormalTriL(obs_loc, np.array(params['SSM_R'])).log_prob(data_tst_obs)
+log_llh = ssm_log_likelihood(params, data_tst_target_ssm_state, data_tst_obs)
 print(np.mean(log_llh))
 
 log_llh = model.log_likelihood(data_tst_obs)
 print(np.mean(log_llh))
 
 # plot
-t = range(params['SEQ_LEN'])
-plt.plot(t, data_tst_target_ssm_state[0, ...], c='k')
-plt.plot(t, data_tst_target_ssm_state[0, ...]+np.sqrt(data_tst_target_ssm_cov[0, ..., 0]), 'k--', )
-plt.plot(t, data_tst_target_ssm_state[0, ...]-np.sqrt(data_tst_target_ssm_cov[0, ..., 0]), 'k--', )
-plt.plot(t, est_ssm_state[0, ...], c='b')
-plt.plot(t, est_ssm_state[0, ...]+np.sqrt(est_ssm_cov[0, ..., 0]), 'b--', )
-plt.plot(t, est_ssm_state[0, ...]-np.sqrt(est_ssm_cov[0, ..., 0]), 'b--', )
-plt.scatter(t, data_tst_obs[0, ...], c='g')
-plt.show()
-
-# y_est, mean, cov = filter(data)
-
-# sample = 0
-# plt.plot(data[sample], c='k')
-# plt.plot(y_est[sample], c='b')
-# plt.hlines(mean[sample], 0, 10, colors=['g'])
-# plt.hlines(mean[sample]+math.sqrt(cov[sample]), 0, 10, colors=['g'])
-# plt.hlines(mean[sample]-math.sqrt(cov[sample]), 0, 10, colors=['g'])
-
-# plt.show()
+ssm_plot(
+    params,
+    data_tst_obs,
+    data_tst_target_ssm_state,
+    data_tst_target_ssm_cov,
+    est_ssm_state,
+    est_ssm_cov
+    )
