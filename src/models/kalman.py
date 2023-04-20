@@ -123,7 +123,7 @@ class KalmanFilter(tf.keras.Model):
     def train_step(self, data):
 
         with tf.GradientTape() as tape:
-            loss = tf.reduce_mean(tf.reduce_sum(
+            loss = -tf.reduce_mean(tf.reduce_sum(
                 self.log_likelihood(data),
                   axis=1))
 
