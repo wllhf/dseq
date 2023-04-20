@@ -85,7 +85,18 @@ class DeepKalmanFilter(tf.keras.Model):
 
         return loss
 
-    def call(self, obs):
+    def log_likelihood(self, observations):
+        q_mean, q_cov = self._r(observations)
+        q = self._dist_state_cls(q_mean, q_cov)
+
+        z = self._convert_to_tensor_fn(q)
+
+        p_mean, p_cov = self._g(z)
+        p = self._dist_obs_cls(p_mean, p_cov)
+
+        return p.log_prob(tf.cast(observations, tf.float32))
+
+    def call(self, observations):
         """
         args:
           obs: observations [batch_size, seq_len, dim_obs]
@@ -93,7 +104,7 @@ class DeepKalmanFilter(tf.keras.Model):
         returns:
           mean, cov: [batch_size, seq_len, dim_state], [batch_size, seq_len, dim_state]
         """
-        return self._r(obs)
+        return self._r(observations)
 
     def train_step(self, data):
         with tf.GradientTape() as tape:

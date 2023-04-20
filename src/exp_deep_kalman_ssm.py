@@ -9,7 +9,7 @@ import tensorflow_probability as tfp
 from models.deep_kalman import DeepKalmanFilter
 
 from utils import ssm_params as params
-from utils import ssm_loader, ssm_plot
+from utils import ssm_loader, ssm_plot, ssm_log_likelihood
 
 tfpd = tfp.distributions
 
@@ -21,9 +21,7 @@ data_val_target_ssm_state, data_val_target_ssm_cov, data_val_obs = ssm_loader(pa
 data_tst_target_ssm_state, data_tst_target_ssm_cov, data_tst_obs = ssm_loader(params, mode='tst')
 
 # model
-# observations = tf.keras.Input(shape=(params['SEQ_LEN'], params['DIM_OBS']), name='observations')
-model = DeepKalmanFilter(dim_state=params['DIM_STATE'], dim_obs=params['DIM_OBS']) # , inputs=observations) # (observations)
-# model = tf.keras.Model(inputs=observations, outputs=estimates)
+model = DeepKalmanFilter(dim_state=params['DIM_STATE'], dim_obs=params['DIM_OBS'])
 optimizer = tf.keras.optimizers.SGD(learning_rate=params['LEARNING_RATE'])
 model.compile(optimizer=optimizer)
 # model.summary()
@@ -39,6 +37,11 @@ model.fit(
 est_ssm_state, est_ssm_cov = model(data_tst_obs)
 
 # likelihood
+log_llh = ssm_log_likelihood(params, data_tst_target_ssm_state, data_tst_obs)
+print(np.mean(log_llh))
+
+log_llh = model.log_likelihood(data_tst_obs)
+print(np.mean(log_llh))
 
 # plot
 ssm_plot(
