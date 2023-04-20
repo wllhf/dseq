@@ -11,12 +11,7 @@ class ParticleCell(tf.keras.layers.AbstractRNNCell):
     of the first cell in case of a stacked RNN cell.
     """
 
-    def __init__(
-            self,
-            cell,
-            n_particles,
-            **kwargs
-            ):
+    def __init__(self, cell, n_particles, **kwargs):
         """
         args:
           cell: RNNCell or StackedRNNCell
@@ -40,9 +35,12 @@ class ParticleCell(tf.keras.layers.AbstractRNNCell):
     def output_size(self):
         return tf.TensorShape([self._n_particles, self._cell.output_size])
 
-    def get_initial_state(self, **kwargs):
-        init_state = self._cell.get_initial_state(**kwargs)
-        return tf.tile(init_state[:, tf.newaxis, :], [1, self._n_particles, 1])
+    def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+        init_state = self._cell.get_initial_state(inputs, batch_size, dtype)
+        return nest.pack_sequence_as(
+            init_state,
+            [tf.tile(s[:, tf.newaxis, :], [1, self._n_particles, 1]) for s in nest.flatten(init_state)]
+        )
 
     def call(self, input, state, training=None):
         """
@@ -61,7 +59,7 @@ class ParticleCell(tf.keras.layers.AbstractRNNCell):
         input_tensor = tf.random.normal(particle_tensor_shape, stddev=self._forward_noise_stddev, dtype=dtype)
 
         # Merge batch and particle dimension
-        states = [tf.reshape(state, [-1, state_dim]) for state in states]
+        state = [tf.reshape(s, [-1, state_dim]) for s in state]
         input_tensor = tf.reshape(input_tensor, [-1, state_dim])
 
         # Concatenate input with noise vector
@@ -72,14 +70,14 @@ class ParticleCell(tf.keras.layers.AbstractRNNCell):
             input_tensor = tf.concat([input_tensor, input], axis=-1)
 
         # Apply inner cell
-        states = nest.pack_sequence_as(self._cell.state_size, states)
-        outputs, states = self._cell(input_tensor, states, training=training)
+        state = nest.pack_sequence_as(self._cell.state_size, state)
+        outputs, state = self._cell(input_tensor, state, training=training)
 
         # Unmerge batch and particle dimension
-        outputs = tf.reshape(outputs, particle_tensor_shape),
-        states = [tf.reshape(state, particle_tensor_shape) for state in nest.flatten(states)]
+        outputs = tf.reshape(outputs, particle_tensor_shape)
+        state = [tf.reshape(state, particle_tensor_shape) for state in nest.flatten(state)]
 
-        return outputs, nest.pack_sequence_as(self._cell.state_size, states)
+        return outputs, nest.pack_sequence_as(self._cell.state_size, state)
 
     def get_config(self):
         config = super().get_config()
@@ -96,7 +94,8 @@ class ParticleCell(tf.keras.layers.AbstractRNNCell):
 
 class ParticleFilterCell(tf.keras.layers.AbstractRNNCell):
 
-    def __init__(self, m_model, f_model):
+    def __init__(self, m_model, f_model, **kwargs):
+        super().__init__(**kwargs)
         self._m_model = m_model
         self._f_model = f_model
 
@@ -115,19 +114,19 @@ class ParticleFilterCell(tf.keras.layers.AbstractRNNCell):
         dtype = inputs.dtype if dtype is None else dtype
         return (
             self._f_model.get_initial_state(inputs, batch_size, dtype),
-            tf.ones([batch_size, self._f_model._n_particles], dtype=dtype)/self._f_model._n_particles
+            tf.ones([batch_size, self._f_model._n_particles, 1], dtype=dtype)/self._f_model._n_particles
         )
 
     def _resample(self, weights, particle_cell_state):
         """
         args:
-          weights: [batch_size, n_particles]
+          weights: [batch_size, n_particles, 1]
           particles: particle cell state
         """
         particle_cell_state = nest.flatten(particle_cell_state)
         # TODO: weights need to be logits, are they?
-        indices = tf.random.categorical(weights, self._f_model._n_particles, dtype='int32')
-        particle_cell_state = tf.gather(particle_cell_state, indices, batch_dims=1)
+        indices = tf.random.categorical(tf.squeeze(weights), self._f_model._n_particles, dtype='int32')
+        particle_cell_state = [tf.gather(s, indices, batch_dims=1) for s in particle_cell_state]
         weights = tf.gather(weights, indices, batch_dims=1)
         return weights, nest.pack_sequence_as(self._f_model.state_size, particle_cell_state)
 
@@ -138,8 +137,7 @@ class ParticleFilterCell(tf.keras.layers.AbstractRNNCell):
           observation: [batch_size, dim_obs]
           particles: [batch_size, n_particles, dim_state]
         """
-        observation = tf.expand_dims(observation, axis=1)
-        observation = tf.tile(observation, [1, tf.shape(particles)[1], 1])
+        observation = tf.tile(observation[:, tf.newaxis], [1, tf.shape(particles)[1], 1])
         input_tensor = tf.concat([observation, particles], axis=-1)
         weights = self._m_model(input_tensor, training=training)
         return weights
@@ -177,9 +175,14 @@ class ParticleFilter(tf.keras.Model):
 
     def __init__(self,
                  dim_state, n_particles,
-                 m_model=None,
-                 n_inner_cell_layers=2, inner_cell_cls=tf.keras.layers.LSTMCell
+                 dim_obs=None, m_model=None,
+                 n_inner_cell_layers=2, inner_cell_cls=tf.keras.layers.LSTMCell,
+                 **kwargs
                  ):
+        super().__init__(**kwargs)
+
+        if m_model is None:
+            m_model = tf.keras.layers.Dense(1)
 
         inner_cell = tf.keras.layers.StackedRNNCells(
             [inner_cell_cls(dim_state) for _ in range(n_inner_cell_layers)]
@@ -192,11 +195,30 @@ class ParticleFilter(tf.keras.Model):
             )
         )
 
+        self._loss_tracker = tf.keras.metrics.Mean(name="loss")
+
+    def log_likelihood(self, observations):
+        _, weights = self(observations)
+        return tf.math.reduce_logsumexp(weights, axis=-1)
+
     def train_step(self, data):
-        pass
+        with tf.GradientTape() as tape:
+            loss = -tf.reduce_mean(tf.reduce_sum(
+                self.log_likelihood(data),
+                  axis=1))
+
+        gradients = tape.gradient(loss, self.trainable_variables)
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+
+        self._loss_tracker.update_state(loss)
+        return {"loss": self._loss_tracker.result()}
+
+    @property
+    def metrics(self):
+        return [self._loss_tracker]
 
     def call(self, observations):
-        pass
+        return self._pf_cell(observations)
 
     def get_config(self):
         config = super().get_config()
