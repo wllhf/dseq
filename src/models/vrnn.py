@@ -81,10 +81,6 @@ class VRNNCell(tf.keras.layers.AbstractRNNCell):
             self._f.get_initial_state(inputs, batch_size, dtype)
             ]
 
-    def _state_input(self, state):
-        #state = nest.flatten(state)
-        return state[-1][0] if isinstance(state, (tuple, list)) else state
-
     def call(self, input, state, training=None):
 
         input_state, rnn_state = state
