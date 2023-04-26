@@ -7,11 +7,13 @@ import matplotlib.pyplot as plt
 
 from models.kalman import KalmanFilter
 
-from utils import ssm_params as params
+from configs.training import params
+from configs.models import lin_gaussian_params
 from utils import ssm_loader, ssm_plot, ssm_log_likelihood
 
 tfpd = tfp.distributions
 
+params.update(lin_gaussian_params)
 params['LEARNING_RATE'] = 0.0005
 params['NUM_EPOCHS'] = 20
 
@@ -47,11 +49,17 @@ log_llh = model.log_likelihood(data_tst_obs)
 print(np.mean(log_llh))
 
 # plot
-ssm_plot(
-    params,
-    data_tst_obs,
-    data_tst_target_ssm_state,
-    data_tst_target_ssm_cov,
-    est_ssm_state,
-    est_ssm_cov
-    )
+fig, axs = plt.subplots(4, 4, sharex=True, sharey=True)
+for r in range(4):
+    for c in range(4):
+        ssm_plot(
+            axs[r, c],
+            params,
+            data_tst_obs[r*c],
+            data_tst_target_ssm_state[r*c],
+            np.squeeze(data_tst_target_ssm_cov[r*c]),
+            est_ssm_state[r*c],
+            np.squeeze(est_ssm_cov[r*c])
+            )
+
+plt.show()
