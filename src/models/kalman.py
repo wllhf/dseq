@@ -116,8 +116,9 @@ class KalmanFilter(tf.keras.Model):
 
     def log_likelihood(self, observations):
         states, _ = self(observations)
+        cov_chol = tf.linalg.cholesky(tf.math.softplus(self._cell.R))
         return tfpd.MultivariateNormalTriL(
-            tf.matmul(states, self._cell.C, transpose_b=True), tf.math.softplus(self._cell.R)
+            tf.matmul(states, self._cell.C, transpose_b=True), cov_chol
             ).log_prob(observations)
 
     def train_step(self, data):
