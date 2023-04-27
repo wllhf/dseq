@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.stats import norm
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -56,15 +57,13 @@ def lin_gaussian_ssm(A, C, Q, R, seq_len, num_samples, seed=0, dtype=np.float32)
     return sta, cov, obs
 
 
-def lin_gaussian_ssm_log_likelihood(params, target_state, target_obs):
-    # TODO: make this numpy
-    obs_loc = _prod(np.array(params['SSM_C']), target_state[..., 0])[..., None]
-    cov_chol = tf.linalg.cholesky(np.array(params['SSM_R']))
-    return tfpd.MultivariateNormalTriL(obs_loc, cov_chol).log_prob(target_obs)
+def lin_gaussian_ssm_log_likelihood(params, state, obs):
+    loc = _prod(np.array(params['SSM_C']), state[..., 0])[..., None]
+    cov = np.array(params['SSM_R'])
+    return norm(loc, cov).logpdf(obs)
 
 
 if __name__ == '__main__':
-    import math
     import matplotlib.pyplot as plt
     seq_len = 5
     sta, cov, obs = lin_gaussian_ssm(seq_len=seq_len, num_samples=1, A=[[0.5]], C=[[1.0]], Q=[[0.5]], R=[[0.1]])
