@@ -1,4 +1,8 @@
 import numpy as np
+import tensorflow as tf
+import tensorflow_probability as tfp
+
+tfpd = tfp.distributions
 
 
 def _prod(M, v):
@@ -51,6 +55,12 @@ def lin_gaussian_ssm(A, C, Q, R, seq_len, num_samples, seed=0, dtype=np.float32)
     cov = np.broadcast_to(Q, (num_samples, seq_len, dim_state, dim_state))
     return sta, cov, obs
 
+
+def lin_gaussian_ssm_log_likelihood(params, target_state, target_obs):
+    # TODO: make this numpy
+    obs_loc = _prod(np.array(params['SSM_C']), target_state[..., 0])[..., None]
+    cov_chol = tf.linalg.cholesky(np.array(params['SSM_R']))
+    return tfpd.MultivariateNormalTriL(obs_loc, cov_chol).log_prob(target_obs)
 
 
 if __name__ == '__main__':
