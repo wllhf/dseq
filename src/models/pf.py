@@ -4,6 +4,9 @@ from tensorflow.python.util import nest
 
 from .pf_lib import *
 
+
+
+
 class ParticleFilterCell(tf.keras.layers.AbstractRNNCell):
 
     def __init__(self, m_model, f_model, **kwargs):
@@ -36,12 +39,9 @@ class ParticleFilterCell(tf.keras.layers.AbstractRNNCell):
           particles: particle cell state
         """
         particle_cell_state = nest.flatten(particle_cell_state)
-        #tf.print(tf.math.reduce_min(weights), tf.math.reduce_max(weights))
         indices = tf.random.categorical(tf.squeeze(weights), self._f_model._n_particles, dtype='int32')
-        #tf.print(tf.math.reduce_min(indices), tf.math.reduce_max(indices))
         particle_cell_state = [tf.gather(s, indices, batch_dims=1) for s in particle_cell_state]
-        weights = tf.gather(weights, indices, batch_dims=1)
-        return weights, nest.pack_sequence_as(self._f_model.state_size, particle_cell_state)
+        return indices, nest.pack_sequence_as(self._f_model.state_size, particle_cell_state)
 
     def _measurement(self, observation, particles, training=None):
         """
@@ -68,15 +68,17 @@ class ParticleFilterCell(tf.keras.layers.AbstractRNNCell):
         # and gradient through very small weights be stopped
         weights = weights - tf.reduce_logsumexp(weights, axis=1, keepdims=True)
         weights = clip_weights(weights)
+        weights = stop_gradient_for_dead_weights(weights)
         return weights
 
     def call(self, input, state, training=None):
         particle_cell_state, weights = state
         weights = self._normalize(weights)
-        _, particle_cell_state = self._resample(weights, particle_cell_state)
+        indices, particle_cell_state = self._resample(weights, particle_cell_state)
         particles, particle_cell_state = self._forward(input, particle_cell_state)
-        weights = self._measurement(input, particles)
-        return (particles, weights), (particle_cell_state, weights)
+        new_weights = self._measurement(input, particles)
+        new_weights = new_weights + tf.gather(weights, indices, batch_dims=1)
+        return (particles, new_weights), (particle_cell_state, new_weights)
 
     def get_config(self):
         config = super().get_config()

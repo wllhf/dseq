@@ -6,8 +6,21 @@ from .utils import get_gaussian_diag_model
 
 tfpd = tfp.distributions
 
+MIN_LOG_WEIGHT = tf.math.log(1e-6)
+
 MAX_LOG_WEIGHT = tf.constant(0.)
 MIN_LOG_WEIGHT = tf.constant(-1000.)
+
+
+def _stop_gradients_at_tensor_elements(tensor, mask):
+    """ Stops gradient at mask == 1. """
+    mask = tf.cast(mask, tensor.dtype)
+    inv_mask = 1. - mask
+    return tf.stop_gradient(mask*tensor) + inv_mask*tensor
+
+
+def stop_gradient_for_dead_weights(weights):
+    return _stop_gradients_at_tensor_elements(weights, weights < MIN_LOG_WEIGHT)
 
 
 def clip_weights(weights):
