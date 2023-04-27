@@ -92,9 +92,6 @@ class KalmanCell(tf.keras.layers.Layer):
         })
         return config
 
-    @classmethod
-    def from_config(cls, config):
-        return cls(**config)
 
 class KalmanFilter(tf.keras.Model):
 
@@ -145,7 +142,3 @@ class KalmanFilter(tf.keras.Model):
             'dim_obs': self._dim_obs
         })
         return config
-
-    @classmethod
-    def from_config(cls, config):
-        return cls(**config)
