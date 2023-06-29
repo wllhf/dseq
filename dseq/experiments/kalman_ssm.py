@@ -1,5 +1,4 @@
 import os
-import math
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
@@ -14,11 +13,13 @@ from dseq.data.ssm import lin_gaussian_ssm_loader as data_loader
 from dseq.data.ssm import plot_lin_gaussian_ssm_1d as plotter
 from dseq.data.ssm import lin_gaussian_ssm_log_likelihood as log_likelihood
 
+from dseq.experiments.utils import get_default_callbacks
+
 tfpd = tfp.distributions
 
 params.update(lin_gaussian_ssm_params)
 params['LEARNING_RATE'] = 0.0005
-params['NUM_EPOCHS'] = 2
+params['NUM_EPOCHS'] = 10
 params['MODEL_PATH'] = os.path.join(params['MODEL_PATH'], 'lin_gau_ssm_kalman')
 
 # data
@@ -35,29 +36,14 @@ model.compile(optimizer=optimizer)
 # model.summary()
 
 # train
-nn_cb = tf.keras.callbacks.TerminateOnNaN()
-
-tb_cb = tf.keras.callbacks.TensorBoard(
-    log_dir=os.path.join(params['MODEL_PATH'], 'logs'),
-    histogram_freq=1,
-    write_graph=True,
-    write_images=True,
-    write_steps_per_second=True,
-    update_freq='batch',
-    profile_batch=1
-)
-
-cp_cb = tf.keras.callbacks.ModelCheckpoint(
-    filepath=os.path.join(params['MODEL_PATH'], 'ckpt'),
-    save_freq='epoch',
-)
+callbacks = get_default_callbacks(params)
 
 model.fit(
     data_trn_obs,
     batch_size=params['BATCH_SIZE'],
     epochs=params['NUM_EPOCHS'],
     validation_data=(data_val_obs,),
-    callbacks=[nn_cb, tb_cb, cp_cb]
+    callbacks=callbacks
 )
 
 # tf.keras.saving.save_model(model, params['MODEL_PATH'])
