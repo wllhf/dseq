@@ -6,6 +6,9 @@ https://arxiv.org/abs/1511.05121
 """
 import tensorflow as tf
 import tensorflow_probability as tfp
+
+from .utils import get_gaussian_diag_model
+
 tfpd = tfp.distributions
 
 
@@ -30,18 +33,11 @@ class DeepKalmanFilter(tf.keras.Model):
         self._convert_to_tensor_fn = convert_to_tensor_fn
         self._loss_tracker = tf.keras.metrics.Mean(name="loss")
 
-        def _get_gaussian_model(base, dim_in, dim_out, name):
-            input = tf.keras.layers.Input(dim_in)
-            h = input if base is None else base(input)
-            mean = tf.keras.layers.Dense(dim_out, name='dense_mean')(h)
-            cov = tf.keras.layers.Dense(dim_out, activation='softplus', name='dense_cov')(h)
-            return tf.keras.Model(inputs=input, outputs=[mean, cov], name=name)
-
         # p(z_t|z_t-1)
-        self._f = _get_gaussian_model(f_stub, (None, self._dim_state,), dim_state, 'dynamics')
+        self._f = get_gaussian_diag_model(f_stub, (None, self._dim_state,), dim_state, 'dynamics')
 
         # p(x_t|z_t)
-        self._g = _get_gaussian_model(g_stub, (None, self._dim_state,), dim_obs, 'generator')
+        self._g = get_gaussian_diag_model(g_stub, (None, self._dim_state,), dim_obs, 'generator')
 
         # p(z|x)
         if r_rnn is None:
@@ -53,7 +49,7 @@ class DeepKalmanFilter(tf.keras.Model):
                     return_sequences=True,
                 )
 
-        self._r = _get_gaussian_model(r_rnn, (None, self._dim_state), dim_state, 'recognition')
+        self._r = get_gaussian_diag_model(r_rnn, (None, self._dim_state), dim_state, 'recognition')
 
     def _neg_elbo(self, obs):
         """
