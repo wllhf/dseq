@@ -5,10 +5,7 @@ import tensorflow_probability as tfp
 
 tfpd = tfp.distributions
 
-
-def _prod(M, v):
-    """ Multiply matrix with batched vector. """
-    return np.einsum('ij,ki->ki', M, v)
+from ..utils import prod, softmax
 
 
 def lin_gaussian_ssm(A, C, Q, R, seq_len, num_samples, seed=0, dtype=np.float32):
@@ -46,11 +43,11 @@ def lin_gaussian_ssm(A, C, Q, R, seq_len, num_samples, seed=0, dtype=np.float32)
     loc_obs = np.zeros(dim_obs)
 
     sta[:, 0, :] = loc_sta
-    obs[:, 0, :] = _prod(C, sta[:, 0, :]) + random_state.normal(loc_obs, scale=R, size=(num_samples, dim_obs))
+    obs[:, 0, :] = prod(C, sta[:, 0, :]) + random_state.normal(loc_obs, scale=R, size=(num_samples, dim_obs))
 
     for t in range(1, seq_len):
-        sta[:, t, :] = _prod(A, sta[:, t-1, :]) + random_state.normal(loc=loc_sta, scale=Q, size=(num_samples, dim_state))
-        obs[:, t, :] = _prod(C, sta[:, t, :]) + random_state.normal(loc=loc_obs, scale=R, size=(num_samples, dim_obs))
+        sta[:, t, :] = prod(A, sta[:, t-1, :]) + random_state.normal(loc=loc_sta, scale=Q, size=(num_samples, dim_state))
+        obs[:, t, :] = prod(C, sta[:, t, :]) + random_state.normal(loc=loc_obs, scale=R, size=(num_samples, dim_obs))
 
     # constant covariance
     cov = np.broadcast_to(Q, (num_samples, seq_len, dim_state, dim_state))
@@ -58,9 +55,41 @@ def lin_gaussian_ssm(A, C, Q, R, seq_len, num_samples, seed=0, dtype=np.float32)
 
 
 def lin_gaussian_ssm_log_likelihood(params, state, obs):
-    loc = _prod(np.array(params['SSM_C']), state[..., 0])[..., None]
+    loc = prod(np.array(params['SSM_C']), state[..., 0])[..., None]
     cov = np.array(params['SSM_R'])
     return norm(loc, cov).logpdf(obs)
+
+
+def lin_gaussian_ssm_loader(params, mode='trn'):
+    return lin_gaussian_ssm(
+        num_samples=params['NUM_SAMPLES'][mode], seq_len=params['SEQ_LEN'],
+        A=params['SSM_A'], C=params['SSM_C'], Q=params['SSM_Q'], R=params['SSM_R'],
+        seed=params['DATA_SEEDS'][mode])
+
+
+def plot_lin_gaussian_ssm_1d(ax, params, state, cov, obs=None, c='k'):
+    t = range(params['SEQ_LEN'])
+
+    ax.plot(t, state, c=c)
+    ax.plot(t, state + np.sqrt(cov), c+'--')
+    ax.plot(t, state - np.sqrt(cov), c+'--')
+
+    if obs is not None:
+        ax.scatter(t, obs, c='g')
+
+
+def plot_particle_ssm_1d(ax, params, particles, weights, c=None):
+    t = range(params['SEQ_LEN'])
+
+    weights = softmax(weights, axis=1)
+    for i in t:
+        ax.scatter([i]*particles.shape[1], particles[i, :], c=weights[i, :], marker='.', cmap='Blues')
+
+    # mean particle
+    ax.scatter(t, np.sum(particles*weights, axis=1), marker='x', c='r')
+    # max particle
+    best = np.take_along_axis(particles, np.expand_dims(np.argmax(weights, axis=1), axis=1), axis=1)
+    ax.scatter(t, best, marker='*', c='r')
 
 
 if __name__ == '__main__':
