@@ -107,6 +107,7 @@ class KalmanFilter(tf.keras.Model):
             self._cell, return_sequences=True, return_state=False,
         )
         self._loss_tracker = tf.keras.metrics.Mean(name="loss")
+        self._llh_tracker = tf.keras.metrics.Mean(name="log_llh")
 
     def call(self, observations):
         return self._rnn(observations)
@@ -131,9 +132,21 @@ class KalmanFilter(tf.keras.Model):
         self._loss_tracker.update_state(loss)
         return {"loss": self._loss_tracker.result()}
 
+    def test_step(self, data):
+        loss = -tf.reduce_mean(tf.reduce_sum(
+                    self.log_likelihood(data),
+                        axis=1))
+        log_llh = self.log_likelihood(data)
+        self._loss_tracker.update_state(loss)
+        self._llh_tracker.update_state(log_llh)
+        return {
+            "loss": self._loss_tracker.result(),
+            "log_llh": self._llh_tracker.result()
+            }
+
     @property
     def metrics(self):
-        return [self._loss_tracker]
+        return [self._loss_tracker, self._llh_tracker]
 
     def get_config(self):
         config = super().get_config()
