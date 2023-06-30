@@ -51,6 +51,9 @@ class DeepKalmanFilter(tf.keras.Model):
 
         self._r = get_gaussian_diag_model(r_rnn, (None, self._dim_state), dim_state, 'recognition')
 
+        self._loss_tracker = tf.keras.metrics.Mean(name="loss")
+        self._llh_tracker = tf.keras.metrics.Mean(name="log_llh")
+
     def _neg_elbo(self, obs):
         """
         args:
@@ -112,9 +115,21 @@ class DeepKalmanFilter(tf.keras.Model):
         self._loss_tracker.update_state(loss)
         return {"loss": self._loss_tracker.result()}
 
+    def test_step(self, data):
+        # TODO: replace line below with build()
+        self(data) # Necessary for Keras model saver callback
+        loss = self._neg_elbo(data)
+        log_llh = self.log_likelihood(data)
+        self._loss_tracker.update_state(loss)
+        self._llh_tracker.update_state(log_llh)
+        return {
+            "loss": self._loss_tracker.result(),
+            "log_llh": self._llh_tracker.result()
+            }
+
     @property
     def metrics(self):
-        return [self._loss_tracker]
+        return [self._loss_tracker, self._llh_tracker]
 
     def get_config(self):
         config = super().get_config()
