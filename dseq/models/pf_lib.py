@@ -113,7 +113,7 @@ class RNNTransitionCell(TransitionCell):
     of the first cell in case of a stacked RNN cell.
     """
 
-    def __init__(self, n_particles, dim_state, cell, **kwargs):
+    def __init__(self, n_particles, dim_state, cell, noise_stddev=1.0, **kwargs):
         """
         args:
           n_particles: Integer
@@ -124,6 +124,7 @@ class RNNTransitionCell(TransitionCell):
         """
         super(RNNTransitionCell, self).__init__(n_particles, dim_state, **kwargs)
         self._cell = cell
+        self._noise_stddev = noise_stddev
 
     @property
     def state_size(self):
@@ -157,7 +158,8 @@ class RNNTransitionCell(TransitionCell):
         state_dim = particle_tensor_shape[2]
 
         # Generate noise
-        input_tensor = tf.random.normal(particle_tensor_shape, stddev=self._forward_noise_stddev, dtype=dtype)
+        input_tensor = tf.random.normal(
+            particle_tensor_shape, stddev=self._noise_stddev, dtype=dtype)
 
         # Merge batch and particle dimension
         state = [tf.reshape(s, [-1, state_dim]) for s in state]
@@ -184,6 +186,7 @@ class RNNTransitionCell(TransitionCell):
         config = super().get_config()
         config.update({
             'cell': self._cell,
+            'noise_stddev': self._noise_stddev
         })
         return config
 

@@ -12,9 +12,19 @@ class ParticleFilter(tf.keras.Model):
                  dim_state, dim_obs, n_particles,
                  m_model='lingau', f_model='lingau',
                  n_inner_cell_layers=2, inner_cell_cls=tf.keras.layers.LSTMCell,
+                 version = 'default',
                  **kwargs
                  ):
         super().__init__(**kwargs)
+
+        if version == 'default':
+            pf_cell_cls = ParticleFilterCell
+        elif version == 'sis':
+            pf_cell_cls = SISParticleFilterCell
+        elif version == 'soft_resampling':
+            pf_cell_cls = SoftParticleFilterCell
+        else:
+            raise NotImplementedError('Particle filter version unknown:', version)
 
         if m_model == 'lingau':
             m_model = LinGaussianMeasurementModel(n_particles, dim_state, dim_obs)
@@ -22,12 +32,15 @@ class ParticleFilter(tf.keras.Model):
         if f_model == 'lingau':
             f_model = LinGaussianTransitionCell(n_particles, dim_state)
         elif f_model == 'rnn':
-            f_model = RNNTransitionCell(tf.keras.layers.StackedRNNCells(
-                [inner_cell_cls(dim_state) for _ in range(n_inner_cell_layers)]
-            ), n_particles)
+            f_model = RNNTransitionCell(
+                n_particles, dim_state,
+                tf.keras.layers.StackedRNNCells(
+                    [inner_cell_cls(dim_state) for _ in range(n_inner_cell_layers)]
+                )
+            )
 
         self._pf_cell = tf.keras.layers.RNN(
-            ParticleFilterCell(
+            pf_cell_cls(
                 m_model=m_model,
                 f_model=f_model,
             ),
@@ -59,7 +72,7 @@ class ParticleFilter(tf.keras.Model):
         loss = - tf.reduce_mean(tf.reduce_sum(
                 self.log_likelihood(data),
                   axis=1))
-        log_llh = loss # self.log_likelihood(data)
+        log_llh = - loss # self.log_likelihood(data)
         self._loss_tracker.update_state(loss)
         self._llh_tracker.update_state(log_llh)
         return {

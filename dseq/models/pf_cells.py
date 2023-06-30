@@ -13,6 +13,10 @@ class ParticleFilterCell(tf.keras.layers.AbstractRNNCell):
         self._f_model = f_model
 
     @property
+    def n_particles(self):
+        return self._f_model._n_particles
+
+    @property
     def state_size(self):
         """ The state is a tuple of the state of the particle cell and weights. """
         return (self._f_model.state_size, tf.TensorShape(self._f_model._n_particles))
@@ -37,7 +41,7 @@ class ParticleFilterCell(tf.keras.layers.AbstractRNNCell):
           particles: particle cell state
         """
         particle_cell_state = nest.flatten(particle_cell_state)
-        indices = tf.random.categorical(tf.squeeze(weights), self._f_model._n_particles, dtype='int32')
+        indices = tf.random.categorical(tf.squeeze(weights), self.n_particles, dtype='int32')
         particle_cell_state = [tf.gather(s, indices, batch_dims=1) for s in particle_cell_state]
         return indices, nest.pack_sequence_as(self._f_model.state_size, particle_cell_state)
 
@@ -105,7 +109,7 @@ class SoftParticleFilterCell(ParticleFilterCell):
         self._alpha = alpha
 
     def _soft_weights(self, weights):
-        return weights - tf.log(self._alpha*tf.exp(weights)+(1-self._alpha)/self._n_particles)
+        return weights - tf.math.log(self._alpha*tf.exp(weights)+(1-self._alpha)/self.n_particles)
 
     def _resample(self, weights, particle_cell_state):
         """
@@ -115,7 +119,7 @@ class SoftParticleFilterCell(ParticleFilterCell):
         """
         particle_cell_state = nest.flatten(particle_cell_state)
         soft_weights = self._soft_weights(weights)
-        indices = tf.random.categorical(tf.squeeze(soft_weights), self._f_model._n_particles, dtype='int32')
+        indices = tf.random.categorical(tf.squeeze(soft_weights), self.n_particles, dtype='int32')
         particle_cell_state = [tf.gather(s, indices, batch_dims=1) for s in particle_cell_state]
         return indices, nest.pack_sequence_as(self._f_model.state_size, particle_cell_state)
 
