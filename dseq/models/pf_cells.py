@@ -96,9 +96,8 @@ class SISParticleFilterCell(ParticleFilterCell):
     def call(self, input, state, training=None):
         particle_cell_state, weights = state
         weights = self._normalize(weights)
-        _, particle_cell_state = self._resample(weights, particle_cell_state)
         particles, particle_cell_state = self._forward(input, particle_cell_state)
-        weights = self._measurement(input, particles)
+        new_weights = new_weights + self._measurement(input, particles)
         return (particles, weights), (particle_cell_state, weights)
 
 
