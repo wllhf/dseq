@@ -1,5 +1,22 @@
 import os
+import random
+import numpy as np
 import tensorflow as tf
+
+
+def set_seed(seed=0):
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)
+    tf.random.set_seed(seed)
+    np.random.seed(seed)
+
+
+def set_determinism(seed=0):
+    set_seed(seed=seed)
+    os.environ['TF_DETERMINISTIC_OPS'] = '1'
+    os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+    tf.config.threading.set_inter_op_parallelism_threads(1)
+    tf.config.threading.set_intra_op_parallelism_threads(1)
 
 
 def get_default_callbacks(params):
@@ -20,5 +37,5 @@ def get_default_callbacks(params):
         save_freq='epoch',
     )
 
-    return [nn_cb, tb_cb, cp_cb]
-    #return [nn_cb, tb_cb]
+    # return [nn_cb, tb_cb, cp_cb]
+    return [nn_cb, tb_cb]

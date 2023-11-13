@@ -16,14 +16,16 @@ from dseq.data.ssm import lin_gaussian_ssm_loader as data_loader
 from dseq.data.ssm import plot_lin_gaussian_ssm_1d as plotter
 from dseq.data.ssm import lin_gaussian_ssm_log_likelihood as log_likelihood
 
-from dseq.experiments.utils import get_default_callbacks
+from dseq.experiments.utils import get_default_callbacks, set_seed
 
 tfpd = tfp.distributions
 
 params.update(lin_gaussian_ssm_params)
-params['LEARNING_RATE'] = 0.0005
-params['NUM_EPOCHS'] = 10
+params['LEARNING_RATE'] = 0.0001
+params['NUM_EPOCHS'] = 50
 params['MODEL_PATH'] = os.path.join(params['MODEL_PATH'], 'lin_gau_ssm_kalman')
+
+set_seed(params['SEED'])
 
 # data
 data_trn_target_ssm_state, data_trn_target_ssm_cov, data_trn_obs  = data_loader(params, mode='trn')
